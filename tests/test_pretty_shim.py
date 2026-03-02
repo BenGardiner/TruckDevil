@@ -1,6 +1,11 @@
 import unittest
+import os
 import sys
 from unittest.mock import patch, MagicMock
+
+_TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_DIR = os.path.dirname(_TESTS_DIR)
+_J1939_PY = os.path.join(_REPO_DIR, 'truckdevil', 'j1939', 'j1939.py')
 
 
 class PrettyShimImportTest(unittest.TestCase):
@@ -19,23 +24,27 @@ class PrettyShimImportTest(unittest.TestCase):
         for m in modules_to_remove:
             saved[m] = sys.modules.pop(m)
 
-        # Simulate missing pretty_j1939 and bitstring
-        with patch.dict(sys.modules, {'pretty_j1939': None, 'bitstring': None,
-                                       'pretty_j1939.describe': None,
-                                       'pretty_j1939.render': None,
-                                       'pretty_j1939.__main__': None}):
-            # Force reimport
+        blocked = {'bitstring', 'pretty_j1939', 'pretty_j1939.describe',
+                   'pretty_j1939.render', 'pretty_j1939.__main__'}
+        original_import = __builtins__.__import__ if hasattr(__builtins__, '__import__') else __import__
+
+        def mock_import(name, *args, **kwargs):
+            if name in blocked:
+                raise ImportError(f"No module named '{name}'")
+            return original_import(name, *args, **kwargs)
+
+        try:
             if 'truckdevil.libs.pretty_shim' in sys.modules:
                 del sys.modules['truckdevil.libs.pretty_shim']
 
-            try:
+            with patch('builtins.__import__', side_effect=mock_import):
                 from truckdevil.libs.pretty_shim import PrettyShim, PRETTY_AVAILABLE
                 self.assertFalse(PRETTY_AVAILABLE)
-            except ImportError:
-                self.fail("pretty_shim should not raise ImportError when pretty_j1939 is not installed")
-            finally:
-                # Restore saved modules
-                sys.modules.update(saved)
+        except ImportError:
+            self.fail("pretty_shim should not raise ImportError when pretty_j1939 is not installed")
+        finally:
+            # Restore saved modules
+            sys.modules.update(saved)
 
     def test_pretty_available_flag(self):
         """PRETTY_AVAILABLE should reflect whether pretty_j1939 is importable."""
@@ -82,9 +91,7 @@ class J1939ImportsTest(unittest.TestCase):
 
     def test_no_shlex_import_in_j1939(self):
         """j1939.py should not import shlex (it was removed as unused)."""
-        import inspect
-        # We can't easily import j1939.py due to its dependencies, so read the file
-        with open('truckdevil/j1939/j1939.py', 'r') as f:
+        with open(_J1939_PY, 'r') as f:
             source = f.read()
         lines = source.split('\n')
         shlex_imports = [
@@ -96,7 +103,7 @@ class J1939ImportsTest(unittest.TestCase):
 
     def test_pretty_verbose_documented(self):
         """print_messages docstring should document pretty/verbose mutual exclusivity."""
-        with open('truckdevil/j1939/j1939.py', 'r') as f:
+        with open(_J1939_PY, 'r') as f:
             source = f.read()
         self.assertIn('Mutually exclusive with verbose', source,
                       "print_messages should document that pretty and verbose are mutually exclusive")
