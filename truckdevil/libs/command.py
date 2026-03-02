@@ -4,6 +4,11 @@ import sys
 
 class Command(cmd.Cmd):
     def __init__(self, sm=None):
+        """
+        :param sm: optional SettingsManager instance for tab-completion of
+                   set/unset commands. Subclasses may also set self.sm after
+                   calling super().__init__().
+        """
         super().__init__()
         self.sm = sm
 
