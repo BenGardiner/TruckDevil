@@ -12,6 +12,20 @@ class Command(cmd.Cmd):
         super().__init__()
         self.sm = sm
 
+    def preloop(self):
+        """Ensure readline tab-completion works on libedit-backed systems.
+
+        Python's cmd.Cmd.cmdloop() uses GNU-readline syntax
+        ("tab: complete") which libedit silently ignores.  Setting the
+        libedit binding here makes tab-completion portable.
+        """
+        try:
+            import readline
+            if getattr(readline, '__doc__', None) and 'libedit' in readline.__doc__:
+                readline.parse_and_bind("bind ^I rl_complete")
+        except ImportError:
+            pass
+
     def run_commands(self, argv):
         """
         run commands from list of arguments

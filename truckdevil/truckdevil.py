@@ -160,10 +160,21 @@ if __name__ == "__main__":
 
     try:
         import readline
+        # libedit (macOS / some BSDs) uses a different binding syntax;
+        # GNU readline's "tab: complete" is silently ignored by libedit.
+        # Setting the correct binding here ensures tab-completion works
+        # regardless of the backend (cmd.Cmd.cmdloop only uses GNU syntax).
+        if getattr(readline, '__doc__', None) and 'libedit' in readline.__doc__:
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
     except ImportError:
+        print("Warning: readline not found. Tab-completion will not work.")
         if sys.platform == 'win32':
-            print("Warning: readline not found. Tab-completion may not work.")
-            print("Try: pip install pyreadline3")
+            print("  Install it with:  pip install pyreadline3")
+        else:
+            print("  On Debian/Ubuntu:  sudo apt install libreadline-dev")
+            print("  Then rebuild Python or:  pip install gnureadline")
 
     fc = FrameworkCommands()
     if len(sys.argv) > 1:

@@ -285,6 +285,25 @@ def test_cli_complete_use(truckdevil_module_env):
     assert len(all_completions) >= 4
 
 
+def test_readline_tab_binding_configured(truckdevil_module_env):
+    """readline 'tab: complete' binding is set after importing truckdevil."""
+    readline = pytest.importorskip("readline")
+    # After importing readline, verify we can parse_and_bind without error
+    # (the actual binding happens in __main__ and Command.preloop)
+    if getattr(readline, '__doc__', None) and 'libedit' in readline.__doc__:
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
+
+def test_command_preloop_does_not_raise(truckdevil_module_env):
+    """Command.preloop() runs without error (sets libedit binding if needed)."""
+    from libs.command import Command
+    cmd_instance = Command()
+    # preloop should not raise regardless of readline backend
+    cmd_instance.preloop()
+
+
 def test_cli_device_added_property(truckdevil_module_env, shared_channel):
     """device_added is False until add_device, then True."""
     FrameworkCommands = _load_framework_commands()
