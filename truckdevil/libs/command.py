@@ -121,6 +121,97 @@ class Command:
             else:
                 print(f"*** No help on {arg}")
 
+    def do_settings(self, arg):
+        """Show the settings and each setting value"""
+        if self.sm:
+            print(self.sm)
+        else:
+            print("*** No settings available for this module.")
+        return
+
+    def do_set(self, arg):
+        """
+        Provide a setting name and a value to set the setting. For a list of
+        available settings and their current and default values see the
+        settings command.
+
+        example:
+        set read_time 10
+        set filter_src_addr 11,249
+        """
+        if not self.sm:
+            print("*** No settings available for this module.")
+            return
+
+        argv = shlex.split(arg)
+        if len(argv) < 2:
+            print("expected setting name and value, see 'help set'")
+            return
+            
+        name = argv[0]
+        val_str = argv[1]
+        
+        if name not in self.sm.settings:
+            print("*** Unknown setting: {}".format(name))
+            return
+
+        try:
+            setting = self.sm[name]
+            if setting.datatype == int:
+                if val_str.startswith("0x"):
+                    self.sm.set(name, int(val_str, 16))
+                else:
+                    self.sm.set(name, int(val_str))
+            elif setting.datatype == float:
+                self.sm.set(name, float(val_str))
+            elif setting.datatype == bool:
+                if val_str.lower() in ["true", "on", "1", "yes"]:
+                    self.sm.set(name, True)
+                elif val_str.lower() in ["false", "off", "0", "no"]:
+                    self.sm.set(name, False)
+                else:
+                    print("*** Invalid boolean value: {}".format(val_str))
+            elif setting.datatype == list:
+                values = val_str.split(",")
+                if len(setting.default_value) > 0 and isinstance(setting.default_value[0], int):
+                    new_values = []
+                    for v in values:
+                        if v.strip().startswith("0x"):
+                            new_values.append(int(v.strip(), 16))
+                        else:
+                            new_values.append(int(v.strip()))
+                    self.sm.set(name, new_values)
+                else:
+                    self.sm.set(name, [v.strip() for v in values])
+            else:
+                self.sm.set(name, val_str)
+        except ValueError as e:
+            print("Could not set: {}".format(e))
+        return
+
+    def do_unset(self, arg):
+        """
+        Provide a setting name to set it back to it's default value. For a list of
+        available settings and their current and default values see the
+        settings command.
+
+        example:
+        unset read_time
+        """
+        if not self.sm:
+            print("*** No settings available for this module.")
+            return
+
+        argv = shlex.split(arg)
+        if len(argv) == 0:
+            print("expected name, see 'help unset'")
+            return
+        name = argv[0]
+        if name in self.sm.settings:
+            self.sm.unset(name)
+        else:
+            print("*** Unknown setting: {}".format(name))
+
     def do_quit(self, arg):
         """
         Quit TruckDevil immediately, regardless of the current module state.
