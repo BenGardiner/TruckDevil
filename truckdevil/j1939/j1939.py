@@ -452,7 +452,13 @@ class J1939Interface:
             # Keep the thread from executing if not in collection state
             if not self.data_collection_occurring:
                 break
-            j1939_message = self.read_one_message(abstract_tpm, self.m_manager, timeout)
+            try:
+                j1939_message = self.read_one_message(abstract_tpm, self.m_manager, timeout)
+            except Exception:
+                # If the bus is closed or another error occurred, stop collection
+                self._data_collection_occurring = False
+                break
+                
             if j1939_message is None:
                 continue  # timeout occurred
             if ((len(can_id) == 0 or j1939_message.can_id in can_id) and
@@ -1345,7 +1351,7 @@ class J1939Message:
         if total_bytes is None:
             total_bytes = len(data) / 2
         self._can_id = can_id
-        self._data = data
+        self._data = data.upper()
         self._total_bytes = int(total_bytes)
         self._timestamp = 0
 
