@@ -8,6 +8,7 @@ import os
 from j1939.j1939 import J1939Interface, J1939Message
 from libs.command import Command
 from libs.ecu import ECU
+from libs.settings import SettingsManager, Setting
 
 
 def get_ecu_name(address: int) -> str:
@@ -79,7 +80,9 @@ class DiscoveryCommands(Command):
     prompt = "(truckdevil.ecu_discovery) "
 
     def __init__(self, device):
-        super().__init__()
+        sm = SettingsManager()
+        sm.add_setting(Setting("name_details", False).add_description("Show full J1939 NAME decoding details"))
+        super().__init__(sm=sm)
         self.devil = J1939Interface(device)
         self.ed = ECUDiscovery()
 
@@ -125,6 +128,14 @@ class DiscoveryCommands(Command):
             return
         for ecu in self.ed.known_ecus:
             print(ecu)
+            if self.sm.name_details and ecu.name_decoded:
+                decoded_str = str(ecu.name_decoded)
+                # Indent each line
+                indented = "\n".join("    " + line for line in decoded_str.split("\n"))
+                print(indented)
+        
+        if not self.sm.name_details:
+            print("\n(use set name_details True to see NAME decodes)")
 
     def do_passive_scan(self, arg):
         """
