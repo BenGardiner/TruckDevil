@@ -1,14 +1,24 @@
-import cmd
 import importlib
 import os
 import sys
+import argparse
 from pkgutil import iter_modules
 
+# Ensure the truckdevil directory is in sys.path for internal imports
+package_dir = os.path.dirname(os.path.abspath(__file__))
+if package_dir not in sys.path:
+    sys.path.insert(0, package_dir)
+
 from libs.device import Device
-from __init__ import __version__
+from libs.command import Command
+try:
+    from __init__ import __version__
+except ImportError:
+    from . import __version__
+from prompt_toolkit.completion import NestedCompleter
 
 
-class FrameworkCommands(cmd.Cmd):
+class FrameworkCommands(Command):
     intro = "Welcome to the truckdevil framework v{}. Type 'help or ?' for a list of commands.".format(__version__)
     prompt = '(truckdevil) '
 
@@ -17,6 +27,34 @@ class FrameworkCommands(cmd.Cmd):
         self._device = None
         module_path = os.path.join(os.path.dirname(__file__), 'modules')
         self.module_names = [name for _, name, _ in iter_modules([module_path])]
+
+    def get_completion_dict(self):
+        """
+        Builds a completion dictionary that includes modules for 'run_module' 
+        and known CAN interfaces for 'add_device'.
+        """
+        import can
+        
+        # Get standard base completions (help, quit, etc.)
+        nested_dict = super().get_completion_dict()
+        
+        # Get standard CAN interfaces
+        interfaces = ['m2']
+        if hasattr(can, 'VALID_INTERFACES'):
+            interfaces.extend(can.VALID_INTERFACES)
+        elif hasattr(can.interface, 'VALID_INTERFACES'):
+            interfaces.extend(can.interface.VALID_INTERFACES)
+        interfaces = sorted(list(set(interfaces)))
+
+        # Sub-commands for run_module and use
+        module_completer = {name: None for name in self.module_names}
+        nested_dict['run_module'] = module_completer
+        nested_dict['use'] = module_completer
+        
+        # Sub-commands for add_device
+        nested_dict['add_device'] = {iface: None for iface in interfaces}
+        
+        return nested_dict
 
     @property
     def device(self):
@@ -106,89 +144,66 @@ class FrameworkCommands(cmd.Cmd):
             self.do_help("run_module")
 
 
+    def complete_run_module(self, text, line, begidx, endidx):
+        if not text:
+            return self.module_names
+        else:
+            return [n for n in self.module_names if n.startswith(text)]
+
     def do_use(self, args):
         """
         alias 'use' to 'run_module'
         """
         self.do_run_module(args) 
 
-    def do_quit(self, args):
-        """
-        Quit TruckDevil immediately, regardless of the current module state.
-        Unlike 'back', which returns to the parent menu, 'quit' will exit
-        the entire TruckDevil REPL immediately.
-        """
-        sys.exit("Exiting TruckDevil")
-            
-    def complete_add_device(self, text, line, begidx, endidx):
-        import can
-        interfaces = ['m2']
-        if hasattr(can, 'VALID_INTERFACES'):
-            interfaces.extend(can.VALID_INTERFACES)
-        elif hasattr(can.interface, 'VALID_INTERFACES'):
-            interfaces.extend(can.interface.VALID_INTERFACES)
-
-        interfaces = sorted(list(set(interfaces)))
-
-        parts = line[:begidx].split()
-        if len(parts) == 1:
-            if not text:
-                return interfaces
-            return [i for i in interfaces if i.startswith(text)]
-        return []
-
-    def complete_run_module(self, text, line, begidx, endidx):
-        parts = line[:begidx].split()
-        if len(parts) == 1:
-            if not text:
-                completions = self.module_names[:]
-            else:
-                completions = [ f
-                                for f in self.module_names
-                                if f.startswith(text)
-                                ]
-            return completions
-        return []
-
     def complete_use(self, text, line, begidx, endidx):
         return self.complete_run_module(text, line, begidx, endidx)
 
-if __name__ == "__main__":
-    if "--version" in sys.argv or "-V" in sys.argv:
+def main():
+    parser = argparse.ArgumentParser(description="truckdevil J1939 testing framework", add_help=False)
+    parser.add_argument("-c", "--commands", help="Semicolon-separated list of commands to execute and then exit")
+    parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
+    parser.add_argument("-h", "--help", action="store_true", help="Show help and exit")
+    
+    # We want to allow the existing positional commands too, so we use parse_known_args
+    args, unknown = parser.parse_known_args()
+
+    if args.version:
         print("truckdevil {}".format(__version__))
         sys.exit(0)
 
-    try:
-        import readline
-        # libedit (macOS / some BSDs) uses a different binding syntax;
-        # GNU readline's "tab: complete" is silently ignored by libedit.
-        # Setting the correct binding here ensures tab-completion works
-        # regardless of the backend (cmd.Cmd.cmdloop only uses GNU syntax).
-        if getattr(readline, '__doc__', None) and 'libedit' in readline.__doc__:
-            readline.parse_and_bind("bind ^I rl_complete")
-        else:
-            readline.parse_and_bind("tab: complete")
-    except ImportError:
-        print("Warning: readline not found. Tab-completion will not work.")
-        if sys.platform == 'win32':
-            print("  Install it with:  pip install pyreadline3")
-        else:
-            print("  On Debian/Ubuntu:  sudo apt install libreadline-dev")
-            print("  Then rebuild Python or:  pip install gnureadline")
+    if args.help and not args.commands and not unknown:
+        parser.print_help()
+        sys.exit(0)
 
     fc = FrameworkCommands()
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "add_device" and "run_module" in sys.argv:
-            module_index = sys.argv[1:].index("run_module")
-            device_args = sys.argv[1:][:module_index]
-            module_args = sys.argv[module_index + 1:]
+    
+    if args.commands is not None:
+        if args.commands:
+            commands = args.commands.split(';')
+            for cmd in commands:
+                cmd = cmd.strip()
+                if cmd:
+                    fc.onecmd(cmd)
+        sys.exit(0)
+
+    if unknown:
+        if unknown[0] == "add_device" and "run_module" in unknown:
+            module_index = unknown.index("run_module")
+            device_args = unknown[:module_index+1] # Include 'add_device'
+            module_args = unknown[module_index:] # Include 'run_module'
             fc.onecmd(' '.join(device_args))
             fc.onecmd(' '.join(module_args))
-        elif sys.argv[1] == "add_device" and not "run_module" in sys.argv:
-            fc.onecmd(' '.join(sys.argv[1:6]))
-            fc.onecmd(' '.join(sys.argv[6:]))
+        elif unknown[0] == "add_device" and not "run_module" in unknown:
+            fc.onecmd(' '.join(unknown[:5]))
+            fc.onecmd(' '.join(unknown[5:]))
             fc.cmdloop()
         else:
-            fc.onecmd(' '.join(sys.argv[1:]))
+            fc.onecmd(' '.join(unknown))
     else:
         fc.cmdloop()
+
+
+if __name__ == "__main__":
+    main()
+
