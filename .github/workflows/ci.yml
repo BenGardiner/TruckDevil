@@ -55,4 +55,5 @@ jobs:
 
       - name: Run tests
         run: |
+          export PYTHONPATH=$PYTHONPATH:$(pwd)
           python -m pytest tests/ -v
