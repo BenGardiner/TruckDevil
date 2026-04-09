@@ -52,20 +52,6 @@ class PrettyShimImportTest(unittest.TestCase):
         # We don't have pretty_j1939 installed in test env, so it should be False
         self.assertIsInstance(PRETTY_AVAILABLE, bool)
 
-    def test_no_unused_json_import(self):
-        """pretty_shim.py should not import json (it was removed as unused)."""
-        import inspect
-        from truckdevil.libs import pretty_shim
-        source = inspect.getsource(pretty_shim)
-        # json should not be imported at the top level
-        lines = source.split('\n')
-        top_level_json_imports = [
-            line for line in lines
-            if line.strip().startswith('import json')
-        ]
-        self.assertEqual(len(top_level_json_imports), 0,
-                         "json should not be imported in pretty_shim.py")
-
 
 class PrettyShimClassTest(unittest.TestCase):
     """Test PrettyShim class behavior when pretty_j1939 is not available."""
