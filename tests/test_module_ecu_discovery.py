@@ -340,3 +340,149 @@ def test_ecu_discovery_missing_args(truckdevil_module_env, shared_channel):
                 device.can_bus.shutdown()
             except Exception:
                 pass
+
+
+# --- name_details decoding tests ---
+
+
+def test_view_ecus_name_details_allison(truckdevil_module_env, shared_channel):
+    """view_ecus with name_details=True shows decoded NAME for an Allison Transmission ECU."""
+    from libs.device import Device
+    from j1939.j1939 import J1939Message
+    from libs.ecu import ECU
+    import modules.ecu_discovery as ecu_discovery
+
+    device = Device("virtual", None, shared_channel, 250000)
+    try:
+        dcli = ecu_discovery.DiscoveryCommands(device)
+        # Manually add an ECU with Allison Transmission Address Claimed data
+        ecu = ECU(0x03)
+        ecu.address_claimed_response = J1939Message(0x18EEFF03, "6400400000030310")
+        dcli.ed.add_known_ecu(ecu)
+        dcli.sm.name_details = True
+
+        buf = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = buf
+            dcli.do_view_ecus("")
+        finally:
+            sys.stdout = old
+        out = buf.getvalue()
+        assert "Allison" in out
+        assert "Transmission" in out
+        assert "Arbitrary Address Capable: No" in out
+    finally:
+        if device.can_bus is not None:
+            try:
+                device.can_bus.shutdown()
+            except Exception:
+                pass
+
+
+def test_view_ecus_name_details_caterpillar(truckdevil_module_env, shared_channel):
+    """view_ecus with name_details=True shows decoded NAME for a Caterpillar C15 ECU."""
+    from libs.device import Device
+    from j1939.j1939 import J1939Message
+    from libs.ecu import ECU
+    import modules.ecu_discovery as ecu_discovery
+
+    device = Device("virtual", None, shared_channel, 250000)
+    try:
+        dcli = ecu_discovery.DiscoveryCommands(device)
+        ecu = ECU(0x00)
+        ecu.address_claimed_response = J1939Message(0x18EEFF00, "D06B010100000080")
+        dcli.ed.add_known_ecu(ecu)
+        dcli.sm.name_details = True
+
+        buf = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = buf
+            dcli.do_view_ecus("")
+        finally:
+            sys.stdout = old
+        out = buf.getvalue()
+        assert "Caterpillar" in out
+        assert "Engine" in out
+        assert "Arbitrary Address Capable: Yes" in out
+    finally:
+        if device.can_bus is not None:
+            try:
+                device.can_bus.shutdown()
+            except Exception:
+                pass
+
+
+def test_view_ecus_name_details_off_shows_hint(truckdevil_module_env, shared_channel):
+    """view_ecus with name_details=False (default) shows hint to enable it."""
+    from libs.device import Device
+    from j1939.j1939 import J1939Message
+    from libs.ecu import ECU
+    import modules.ecu_discovery as ecu_discovery
+
+    device = Device("virtual", None, shared_channel, 250000)
+    try:
+        dcli = ecu_discovery.DiscoveryCommands(device)
+        ecu = ECU(0x00)
+        ecu.address_claimed_response = J1939Message(0x18EEFF00, "D06B010100000080")
+        dcli.ed.add_known_ecu(ecu)
+        # name_details defaults to False
+
+        buf = io.StringIO()
+        old = sys.stdout
+        try:
+            sys.stdout = buf
+            dcli.do_view_ecus("")
+        finally:
+            sys.stdout = old
+        out = buf.getvalue()
+        assert "set name_details True" in out
+        # Should NOT show decoded NAME fields when name_details is off
+        assert "Arbitrary Address Capable" not in out
+    finally:
+        if device.can_bus is not None:
+            try:
+                device.can_bus.shutdown()
+            except Exception:
+                pass
+
+
+def test_ecu_name_decoded_wire_order(truckdevil_module_env):
+    """ECU.name_decoded uses from_wire_data to correctly byte-swap CAN data."""
+    from libs.ecu import ECU
+    from j1939.j1939 import J1939Message
+
+    ecu = ECU(0x03)
+    # Allison Transmission wire data
+    msg = J1939Message(0x18EEFF03, "6400400000030310")
+    ecu.address_claimed_response = msg
+
+    decoded = ecu.name_decoded
+    assert decoded is not None
+    assert decoded.identity_number == 100
+    assert decoded.manufacturer_code == 2
+    assert decoded.function == 3
+    assert decoded.industry_group == 1
+    assert decoded.arbitrary_address_capable == 0
+    assert decoded.get_manufacturer_name() == "Allison Transmission, Inc."
+
+
+def test_ecu_name_decoded_caterpillar_wire_order(truckdevil_module_env):
+    """ECU.name_decoded correctly decodes Caterpillar C15 wire data."""
+    from libs.ecu import ECU
+    from j1939.j1939 import J1939Message
+
+    ecu = ECU(0x00)
+    msg = J1939Message(0x18EEFF00, "D06B010100000080")
+    ecu.address_claimed_response = msg
+
+    decoded = ecu.name_decoded
+    assert decoded is not None
+    assert decoded.identity_number == 93136
+    assert decoded.manufacturer_code == 8
+    assert decoded.function == 0
+    assert decoded.industry_group == 0
+    assert decoded.arbitrary_address_capable == 1
+    assert decoded.get_manufacturer_name() == "Caterpillar Inc."
+    assert decoded.get_function_name() == "Engine"
