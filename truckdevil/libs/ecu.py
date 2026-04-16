@@ -24,7 +24,8 @@ class ECU:
         if self.name is None:
             return None
         if self._name_decoded is None:
-            self._name_decoded = J1939Name(self.name)
+            # CAN wire data is little-endian (LSB first); byte-swap for decoding
+            self._name_decoded = J1939Name.from_wire_data(self.name)
         return self._name_decoded
 
     @property

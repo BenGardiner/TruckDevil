@@ -30,7 +30,7 @@ class J1939NameDecoder:
 class J1939Name:
     def __init__(self, name_val):
         """
-        :param name_val: 64-bit integer or hex string (16 chars)
+        :param name_val: 64-bit integer or hex string (16 chars, big-endian / MSB-first)
         """
         if isinstance(name_val, str):
             # Strip 0x if present
@@ -42,6 +42,25 @@ class J1939Name:
         
         self.decode()
         self.decoder = J1939NameDecoder()
+
+    @classmethod
+    def from_wire_data(cls, wire_hex):
+        """
+        Create a J1939Name from CAN wire data (little-endian byte order).
+
+        On the J1939 bus, the 8-byte NAME is transmitted LSB first (byte 1
+        contains bits 0-7 of the Identity Number). This method reverses the
+        byte order so the resulting 64-bit integer can be decoded correctly.
+
+        :param wire_hex: 16-character hex string in wire order (LSB first)
+        """
+        wire_hex = wire_hex.strip()
+        if wire_hex.startswith("0x") or wire_hex.startswith("0X"):
+            wire_hex = wire_hex[2:]
+        # Reverse the byte order: split into 2-char byte pairs, reverse, rejoin
+        byte_pairs = [wire_hex[i:i+2] for i in range(0, len(wire_hex), 2)]
+        big_endian_hex = ''.join(reversed(byte_pairs))
+        return cls(big_endian_hex)
 
     def decode(self):
         # bitfields from LSB to MSB (J1939-81)
